@@ -37,10 +37,10 @@ jobs:
       - name: 官方接口不可达时保留已验证数据
         if: steps.refresh.outcome == 'failure'
         run: echo '官方接口本次不可达，使用仓库内已有开奖数据，未伪造新号码；稍后调度会重试。' >> "$GITHUB_STEP_SUMMARY"
-      - name: 保存新增开奖数据
-        if: steps.refresh.outcome == 'success'
+      - name: 保存开奖数据与更新状态
+        if: always()
         run: |
-          if ! git diff --quiet -- data/draws.json; then
+          if ! git diff --quiet -- data/draws.json public/data/draws.json public/data/status.json; then
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
             git add data/draws.json public/data/draws.json public/data/status.json

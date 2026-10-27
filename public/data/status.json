@@ -1,7 +1,11 @@
 {
   "source": "中国体育彩票官方开奖接口",
-  "fetchedAt": "2026-10-27T05:42:11.275Z",
+  "state": "ok",
+  "method": "api",
+  "checkedAt": "2026-10-27T06:13:07.704Z",
+  "fetchedAt": "2026-10-27T06:13:07.704Z",
   "latestIssue": "26122",
   "latestDate": "2026-10-26",
-  "count": 754
+  "count": 754,
+  "message": "已通过官方动态接口核对"
 }
