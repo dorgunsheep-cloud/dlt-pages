@@ -1,0 +1,16 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import assert from 'node:assert/strict';
+const root = fileURLToPath(new URL('../', import.meta.url));
+const html = await fs.readFile(path.join(root, 'dist/index.html'), 'utf8');
+assert(!html.includes('chatgpt.site'), '构建产物不应依赖原私有站点');
+assert(!html.includes('src="/assets/'), '资源地址应兼容仓库子路径');
+for (const match of html.matchAll(/(?:src|href)="(\.\/[^"?#]+)"/g)) await fs.access(path.join(root, 'dist', match[1]));
+const generated = JSON.parse(await fs.readFile(path.join(root, 'dist/data/draws.json'), 'utf8'));
+const source = JSON.parse(await fs.readFile(path.join(root, 'data/draws.json'), 'utf8'));
+assert.deepEqual(generated, source, '前端读取文件须与推荐内置数据一致');
+const status = JSON.parse(await fs.readFile(path.join(root, 'dist/data/status.json'), 'utf8'));
+assert.equal(status.latestIssue, source.at(-1).issue);
+assert.equal(status.count, source.length);
+console.log(`静态构建核验通过：资源采用相对地址，开奖${source.length}期，内置/发布数据一致。`);
