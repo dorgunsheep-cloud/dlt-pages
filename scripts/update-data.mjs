@@ -49,7 +49,7 @@ export async function resolveUpdates(old, fetchPage = officialPage, readPdf = re
     // A conflicting or invalid draw is a data error, never a reason to hide it with another source.
     if (!(error instanceof SourceUnavailableError)) throw error;
     const result = await collectAnnouncementUpdates(old, readPdf, now);
-    return { ...result, method: 'announcement', message: `${error.message}；已通过体彩官方公告备用通道核对（优先广东体彩静态公告），暂未读到第${result.pendingIssue}期公告（404或官方未发布页），将在下次任务继续检查` };
+    return { ...result, method: 'announcement', message: `${error.message}；已通过体彩官方公告备用通道核对（广东/江苏体彩静态公告及全国体彩PDF），暂未读到第${result.pendingIssue}期公告（公告列表无新期或未发布页），将在下次任务继续检查` };
   }
 }
 
@@ -70,7 +70,7 @@ export async function updateData({ root = ROOT, fetchPage = officialPage, readPd
   const destinations = [source, path.join(root, 'public/data/draws.json')];
   await Promise.all(destinations.map(p => fs.writeFile(p + '.tmp', text)));
   for (const destination of destinations) await fs.rename(destination + '.tmp', destination);
-  const metadata = { source: result.method === 'announcement' ? '体彩官方公告（广东体彩静态页面 / 全国体彩PDF）' : '中国体育彩票官方开奖接口', state: 'ok', method: result.method, checkedAt: now.toISOString(), fetchedAt: now.toISOString(), latestIssue: result.draws.at(-1).issue, latestDate: result.draws.at(-1).date, count: result.draws.length, message: result.message };
+  const metadata = { source: result.method === 'announcement' ? '体彩官方公告（广东/江苏体彩静态页面 / 全国体彩PDF）' : '中国体育彩票官方开奖接口', state: 'ok', method: result.method, checkedAt: now.toISOString(), fetchedAt: now.toISOString(), latestIssue: result.draws.at(-1).issue, latestDate: result.draws.at(-1).date, count: result.draws.length, message: result.message };
   await writeStatus(root, metadata);
   console.log(metadata.message);
   console.log(`官方核对完成：新增${result.added}期，共${result.draws.length}期，截至第${metadata.latestIssue}期（${metadata.latestDate}）。`);

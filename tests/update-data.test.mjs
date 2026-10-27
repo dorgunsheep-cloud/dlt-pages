@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { collectUpdates, resolveUpdates, SourceUnavailableError, updateData } from '../scripts/update-data.mjs';
-import { parseAnnouncement, collectAnnouncementUpdates, readAnnouncement, parseHtmlAnnouncement, readOfficialAnnouncement } from '../scripts/official-pdf.mjs';
+import { parseAnnouncement, collectAnnouncementUpdates, readAnnouncement, parseHtmlAnnouncement, readOfficialAnnouncement, createJiangsuReader } from '../scripts/official-pdf.mjs';
 import os from 'node:os';
 import path from 'node:path';
 import { mergeDraws } from '../lib/engine.mjs';
@@ -55,7 +55,19 @@ test('567自动切换官方公告，连续补齐新增期号至404', async () =>
   const result = await resolveUpdates(old, async () => { throw new SourceUnavailableError('HTTP 567'); }, async issue => { calls.push(issue); return base.find(r => r.issue === issue) ?? null; });
   assert.equal(result.added, 2); assert.equal(result.method, 'announcement');
   assert.deepEqual(calls, ['26118','26119','26120','26121']);
-  assert.match(result.message, /567/); assert.match(result.message, /404/);
+  assert.match(result.message, /567/); assert.match(result.message, /未发布/);
+});
+
+test('江苏官方列表发现公告地址，缓存列表且拒绝跳过旧期号', async () => {
+  let lists=0;
+  const reader=createJiangsuReader(async url=>{
+    if(url.endsWith('/wfzq/dlt')){lists++;return new Response('<select id="lottoList"><option value="148104">26120</option></select>');}
+    assert.equal(url,'https://www.js-lottery.com/cms/post-148104.html');
+    return new Response(`<h1>${announcement.replaceAll('\n','<br/>')}</h1>`);
+  });
+  assert.equal((await reader('26120')).date,'2026-10-21');
+  assert.equal(await reader('26121'),null); assert.equal(lists,1);
+  await assert.rejects(reader('26119'),/历史边界/);
 });
 test('公告通道无新增时仍核对最新一期，且能补齐历史缺口', async () => {
   const read = async issue => base.find(r => r.issue === issue) ?? null;
