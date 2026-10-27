@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { collectUpdates, resolveUpdates, SourceUnavailableError, updateData } from '../scripts/update-data.mjs';
-import { parseAnnouncement, collectAnnouncementUpdates, readAnnouncement } from '../scripts/official-pdf.mjs';
+import { parseAnnouncement, collectAnnouncementUpdates, readAnnouncement, parseHtmlAnnouncement, readOfficialAnnouncement } from '../scripts/official-pdf.mjs';
 import os from 'node:os';
 import path from 'node:path';
 import { mergeDraws } from '../lib/engine.mjs';
@@ -53,7 +53,7 @@ test('567自动切换官方公告，连续补齐新增期号至404', async () =>
   const calls = [];
   const old = base.slice(0, -2);
   const result = await resolveUpdates(old, async () => { throw new SourceUnavailableError('HTTP 567'); }, async issue => { calls.push(issue); return base.find(r => r.issue === issue) ?? null; });
-  assert.equal(result.added, 2); assert.equal(result.method, 'pdf');
+  assert.equal(result.added, 2); assert.equal(result.method, 'announcement');
   assert.deepEqual(calls, ['26118','26119','26120','26121']);
   assert.match(result.message, /567/); assert.match(result.message, /404/);
 });
@@ -92,6 +92,17 @@ test('两通道失败保留两个数据文件，发布失败状态；成功恢�
     for (const relative of ['data/draws.json','public/data/draws.json']) assert.equal(fs.readFileSync(path.join(root,relative),'utf8'),before);
     assert.equal(JSON.parse(fs.readFileSync(path.join(root,'public/data/status.json'))).state,'failed');
     const report = await updateData({root,fetchPage,readPdf:async issue=>base.find(r=>r.issue===issue)??null});
-    assert.equal(report.state,'ok'); assert.equal(report.method,'pdf'); assert.equal(report.count,752);
+    assert.equal(report.state,'ok'); assert.equal(report.method,'announcement'); assert.equal(report.count,752);
   } finally { fs.rmSync(root,{recursive:true,force:true}); }
+});
+
+test('省级官方HTML公告按同样标准解析，404不误报为网络成功更新', async () => {
+  const html = '<h1>中国体育彩票超级大乐透</h1><h2>第26120期开奖公告</h2><p>开奖日期：2026年10月21日</p><ul><li>本期出球顺序：</li><li>32 15 10 06 01 04 03</li></ul><ul><li>本期开奖号码：</li><li>01 06 10 15 32</li><li>03 04</li></ul><h3>本期中奖情况</h3>';
+  assert.deepEqual(parseHtmlAnnouncement(html,'26120').front,[1,6,10,15,32]);
+  let calls=0;
+  const row=await readOfficialAnnouncement('26120',async()=>{calls++;return new Response(html);});
+  assert.equal(row.issue,'26120'); assert.equal(calls,1);
+  assert.equal(await readOfficialAnnouncement('26121',async()=>new Response('',{status:404})),null);
+  assert.equal(await readOfficialAnnouncement('26121',async()=>new Response('<div class="error"><img src="images/404.jpg"></div>')),null);
+  await assert.rejects(readOfficialAnnouncement('26120',async()=>new Response('<h1>维护中</h1>')),/格式/);
 });

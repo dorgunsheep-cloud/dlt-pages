@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { mergeDraws, normalizeDraw, auditDraws } from '../lib/engine.mjs';
-import { collectAnnouncementUpdates, readAnnouncement } from './official-pdf.mjs';
+import { collectAnnouncementUpdates, readOfficialAnnouncement } from './official-pdf.mjs';
 
 export const ROOT = fileURLToPath(new URL('../', import.meta.url));
 export const ENDPOINT = 'https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry';
@@ -43,17 +43,17 @@ export async function officialPage(page) {
   throw new SourceUnavailableError(`中国体彩动态接口读取失败：${lastError?.message ?? '连接超时'}`);
 }
 
-export async function resolveUpdates(old, fetchPage = officialPage, readPdf = readAnnouncement, now = new Date()) {
+export async function resolveUpdates(old, fetchPage = officialPage, readPdf = readOfficialAnnouncement, now = new Date()) {
   try { return { ...await collectUpdates(old, fetchPage), method: 'api', message: '已通过官方动态接口核对' }; }
   catch (error) {
     // A conflicting or invalid draw is a data error, never a reason to hide it with another source.
     if (!(error instanceof SourceUnavailableError)) throw error;
     const result = await collectAnnouncementUpdates(old, readPdf, now);
-    return { ...result, method: 'pdf', message: `${error.message}；已切换官方开奖公告，下一期第${result.pendingIssue}期公告尚未发布（HTTP 404）` };
+    return { ...result, method: 'announcement', message: `${error.message}；已通过体彩官方公告备用通道核对（优先广东体彩静态公告），暂未读到第${result.pendingIssue}期公告（404或官方未发布页），将在下次任务继续检查` };
   }
 }
 
-export async function updateData({ root = ROOT, fetchPage = officialPage, readPdf = readAnnouncement, now = new Date() } = {}) {
+export async function updateData({ root = ROOT, fetchPage = officialPage, readPdf = readOfficialAnnouncement, now = new Date() } = {}) {
   const source = path.join(root, 'data/draws.json');
   const old = JSON.parse(await fs.readFile(source, 'utf8'));
   let previous = {};
@@ -70,7 +70,7 @@ export async function updateData({ root = ROOT, fetchPage = officialPage, readPd
   const destinations = [source, path.join(root, 'public/data/draws.json')];
   await Promise.all(destinations.map(p => fs.writeFile(p + '.tmp', text)));
   for (const destination of destinations) await fs.rename(destination + '.tmp', destination);
-  const metadata = { source: result.method === 'pdf' ? '中国体育彩票官方开奖公告PDF' : '中国体育彩票官方开奖接口', state: 'ok', method: result.method, checkedAt: now.toISOString(), fetchedAt: now.toISOString(), latestIssue: result.draws.at(-1).issue, latestDate: result.draws.at(-1).date, count: result.draws.length, message: result.message };
+  const metadata = { source: result.method === 'announcement' ? '体彩官方公告（广东体彩静态页面 / 全国体彩PDF）' : '中国体育彩票官方开奖接口', state: 'ok', method: result.method, checkedAt: now.toISOString(), fetchedAt: now.toISOString(), latestIssue: result.draws.at(-1).issue, latestDate: result.draws.at(-1).date, count: result.draws.length, message: result.message };
   await writeStatus(root, metadata);
   console.log(metadata.message);
   console.log(`官方核对完成：新增${result.added}期，共${result.draws.length}期，截至第${metadata.latestIssue}期（${metadata.latestDate}）。`);

@@ -1,6 +1,32 @@
 import { normalizeDraw, mergeDraws, auditDraws } from '../lib/engine.mjs';
 
 export const announcementUrl = issue => `https://pdf.sporttery.cn/33800/${issue}/${issue}.pdf`;
+export const provincialUrl = issue => `https://www.gdlottery.cn/f_html/kjgg/P085_${issue}.html`;
+
+export function parseHtmlAnnouncement(html, issue) {
+  const text = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ').replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&nbsp;|&#160;/gi, ' ').replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)));
+  return parseAnnouncement(text, issue);
+}
+
+// The provincial centre republishes the same national draw in static HTML.
+// A 404 here means this source has no new announcement yet; other failures
+// may use the national PDF source. Malformed/conflicting data is never hidden.
+export async function readOfficialAnnouncement(issue, fetchImpl = fetch) {
+  let response;
+  try {
+    response = await fetchImpl(provincialUrl(issue), { signal: AbortSignal.timeout(15000) });
+    if (response.status === 404) return null;
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  } catch (error) {
+    try { return await readAnnouncement(issue, fetchImpl); }
+    catch (pdfError) { throw new Error(`广东体彩公告：${error.message}；全国体彩公告：${pdfError.message}`); }
+  }
+  const html = await response.text();
+  if (html.length > 3 * 1024 * 1024) throw new Error(`第${issue}期公告超出大小限制`);
+  // This site serves its specific 404 template with HTTP 200 for unpublished issues.
+  if (/<div\s+class=["']error["'][^>]*>[\s\S]*?<img[^>]+src=["']images\/404\.jpg["']/i.test(html) && !html.includes('本期开奖号码')) return null;
+  return parseHtmlAnnouncement(html, issue);
+}
 
 export function parseAnnouncement(text, expectedIssue) {
   const compact = text.replace(/\s+/g, '');
@@ -32,7 +58,7 @@ export async function readAnnouncement(issue, fetchImpl = fetch) {
   }
 }
 
-export async function collectAnnouncementUpdates(existing, readPdf = readAnnouncement, now = new Date()) {
+export async function collectAnnouncementUpdates(existing, readPdf = readOfficialAnnouncement, now = new Date()) {
   const current = mergeDraws([], existing).draws;
   const anchor = current.at(-1);
   const verified = await readPdf(anchor.issue);
